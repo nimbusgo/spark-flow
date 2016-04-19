@@ -13,7 +13,7 @@ object FlowBuild extends sbt.Build {
         "softprops-maven" at "http://dl.bintray.com/content/softprops/maven",
         "mvnrepository" at "http://mvnrepository.com/artifact/"
     ),
-      licenses += ("Apache",
+      licenses += ("Apache-2.0",
         url("https://github.com/nimbusgo/spark-flow/blob/master/LICENSE"))
     )
 
