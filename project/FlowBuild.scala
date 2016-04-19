@@ -13,7 +13,8 @@ object FlowBuild extends sbt.Build {
         "softprops-maven" at "http://dl.bintray.com/content/softprops/maven",
         "mvnrepository" at "http://mvnrepository.com/artifact/"
     ),
-      licenses += ("MIT", url("http://opensource.org/licenses/MIT"))
+      licenses += ("Apache",
+        url("https://github.com/nimbusgo/spark-flow/blob/master/LICENSE"))
     )
 
   // Force dependencies to not revert scala version
