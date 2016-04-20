@@ -4,33 +4,48 @@ import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
 import scala.reflect.ClassTag
+import scala.language.implicitConversions
 import sparkflow._
+import org.apache.spark.sql.{DataFrame, Dataset, SQLContext, Encoder}
 
 /**
   * DistributedCollection, analogous to RDD
   */
 abstract class DC[T: ClassTag](deps: Seq[Dependency[_]]) extends Dependency[T](deps) {
 
-  private var rdd: RDD[T] = _
+  private var _rdd: RDD[T] = _
+  private var _dataset: Option[Dataset[T]] = None
   private var checkpointed = false
 
   protected def computeRDD(sc: SparkContext): RDD[T]
+  protected def computeDataset(sc: SparkContext): Option[Dataset[T]]
+
+  def getDataset(sc: SparkContext): Option[Dataset[T]] = {
+    if (_dataset.isEmpty) {
+      _dataset = computeDataset(sc)
+    }
+    _dataset
+  }
 
   def getRDD(sc: SparkContext): RDD[T] = {
-    if(rdd == null){
+    if(_rdd == null){
       if (checkpointed){
-        loadCheckpoint[T](getHash, sc) match {
-          case Some(existingRdd) => this.rdd = existingRdd
+        loadRDDCheckpoint[T](getHash, sc) match {
+          case Some(existingRdd) => this._rdd = existingRdd
           case None =>
-            this.rdd = computeRDD(sc)
-            rdd.cache()
-            saveCheckpoint(getHash, rdd)
+            this._rdd = computeRDD(sc)
+            _rdd.cache()
+            saveRDDCheckpoint(getHash, _rdd)
         }
       } else {
-        this.rdd = this.computeRDD(sc)
+        this._rdd = this.computeRDD(sc)
       }
     }
-    rdd
+    _rdd
+  }
+
+  def getDataFrame(sc: SparkContext): Option[DataFrame] = {
+    getDataset(sc).map(_.toDF())
   }
 
   def map[U: ClassTag](f: T => U): DC[U] = {
@@ -70,4 +85,13 @@ object DC {
     (implicit kt: ClassTag[K], vt: ClassTag[V], ord: Ordering[K] = null): PairDCFunctions[K, V] = {
     new PairDCFunctions(dc)
   }
+
+  implicit def doubleDCToDoubleDCFunctions(dc: DC[Double]): DoubleDCFunctions = {
+    new DoubleDCFunctions(dc)
+  }
+
+  implicit def dcToDatasetDCFunctions[T](dc: DC[T])(implicit tEncoder: Encoder[T]): DatasetDCFunctions[T] = {
+    new DatasetDCFunctions(dc)
+  }
+
 }

@@ -2,6 +2,7 @@ package sparkflow.layer
 
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.Dataset
 
 import scala.reflect.ClassTag
 import sparkflow.serialization.Hashing
@@ -18,6 +19,13 @@ extends DC[T](inputs){
   }
 
   override def computeRDD(sc: SparkContext) = {
+    f(inputs.map(_.getRDD(sc)))
+  }
+
+  override def computeDataset(sc: SparkContext): Option[Dataset[T]]= {
+    val ds = inputs(0).getDataset(sc).get
+    val thing =ds.asInstanceOf[Dataset[(Int,Int)]]
+    thing.
     f(inputs.map(_.getRDD(sc)))
   }
 

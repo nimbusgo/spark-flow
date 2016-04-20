@@ -1,5 +1,6 @@
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{SQLContext, Dataset}
 import sparkflow.layer.{SourceDC, ParallelCollectionDC, DC}
 import java.io.File
 
@@ -41,11 +42,11 @@ package object sparkflow {
   private var checkpointDir = "/tmp/sparkflow"
   def setCheckpointDir(s: String) = {checkpointDir = s}
 
-  private[sparkflow] def saveCheckpoint[T:ClassTag](hash: String, rdd: RDD[T]) = {
+  private[sparkflow] def saveRDDCheckpoint[T:ClassTag](hash: String, rdd: RDD[T]) = {
     rdd.saveAsObjectFile(new File(checkpointDir, hash).toString)
   }
 
-  private[sparkflow] def loadCheckpoint[T:ClassTag](hash: String, sc: SparkContext): Option[RDD[T]] = {
+  private[sparkflow] def loadRDDCheckpoint[T:ClassTag](hash: String, sc: SparkContext): Option[RDD[T]] = {
     Try{
       val attemptRDD = sc.objectFile[T](new File(checkpointDir, hash).toString)
       attemptRDD.first()
@@ -53,4 +54,13 @@ package object sparkflow {
     }.toOption
   }
 
+
+  private[sparkflow] def loadDSCheckpoint[T:ClassTag](hash: String, sc: SparkContext): Option[Dataset[T]] = {
+    Try{
+      val sqlContext = SQLContext.getOrCreate(sc)
+      val attempt = sqlContext.read.parquet(new File(checkpointDir, hash).toString).as[T]
+      attempt.first()
+      attempt
+    }.toOption
+  }
 }
