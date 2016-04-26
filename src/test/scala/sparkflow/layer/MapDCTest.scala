@@ -20,6 +20,4 @@ class MapDCTest extends FunSuite with SharedSparkContext with ShouldMatchers{
     Seq(2,4,6,8) should contain theSameElementsAs rdd.collect()
   }
 
-
-
 }

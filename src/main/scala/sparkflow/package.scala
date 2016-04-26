@@ -1,6 +1,6 @@
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SQLContext, Dataset}
+import org.apache.spark.sql.{ColumnName, SQLImplicits, SQLContext, Dataset, Encoder}
 import sparkflow.layer.{SourceDC, ParallelCollectionDC, DC}
 import java.io.File
 
@@ -10,11 +10,22 @@ import scala.util.Try
 /**
   * Created by ngoehausen on 3/24/16.
   */
-package object sparkflow {
+package object sparkflow extends SQLImplicits with Serializable{
+
+
+  private[sparkflow] var sQLContext: SQLContext = null
+  protected override def _sqlContext: SQLContext = sQLContext
+
+    // This must live here to preserve binary compatibility with Spark < 1.5.
+  implicit class StringToColumn(val sc: StringContext) {
+    def $(args: Any*): ColumnName = {
+      new ColumnName(sc.s(args: _*))
+    }
+  }
 
   val sentinelInt = -1
 
-  def parallelize[T:ClassTag](seq: Seq[T]): DC[T] = {
+  def parallelize[T:ClassTag](seq: Seq[T])(implicit tEncoder: Encoder[T]): DC[T] = {
     new ParallelCollectionDC(seq)
   }
 
@@ -29,7 +40,8 @@ package object sparkflow {
   }
 
   def objectFile[T:ClassTag](path: String,
-                             minPartitions: Int = sentinelInt) = {
+                             minPartitions: Int = sentinelInt)
+                            (implicit tEncoder: Encoder[T])= {
     val sourceFunc = if(minPartitions == sentinelInt){
       (sc: SparkContext) => sc.objectFile[T](path)
     } else {
@@ -54,13 +66,12 @@ package object sparkflow {
     }.toOption
   }
 
-
-  private[sparkflow] def loadDSCheckpoint[T:ClassTag](hash: String, sc: SparkContext): Option[Dataset[T]] = {
-    Try{
-      val sqlContext = SQLContext.getOrCreate(sc)
-      val attempt = sqlContext.read.parquet(new File(checkpointDir, hash).toString).as[T]
-      attempt.first()
-      attempt
-    }.toOption
+  implicit def rddFuncToDSFunc[T: ClassTag, U](rddF: (RDD[T])=> U)(implicit tEncoder: Encoder[T]): Dataset[T] => U = {
+    (ds: Dataset[T]) => rddF(ds.rdd)
   }
+
+  implicit def dsFuncToRDDFunc[T: ClassTag, U](dsF: (Dataset[T])=> U)(implicit tEncoder: Encoder[T]): RDD[T] => U = {
+    (rdd: RDD[T]) => dsF(rdd.toDS())
+  }
+  
 }

@@ -1,11 +1,10 @@
 package sparkflow.layer
 
 import com.holdenkarau.spark.testing.SharedSparkContext
-import org.apache.spark.SparkContext
 import org.apache.spark.sql.SQLContext
 import org.scalatest._
 import sparkflow._
-import sparkflow.layer.DC._
+import sparkflow.serialization.SomeCaseClasses._
 
 /**
   * Created by ngoehausen on 4/19/16.
@@ -13,23 +12,24 @@ import sparkflow.layer.DC._
 class DatasetDCFunctionsTest extends FunSuite with SharedSparkContext with ShouldMatchers {
 
   test("basic"){
-//    val dc = parallelize(1 to 10).map(_.toDouble)
-//
-//    val res = dc.sum()
-//    println(res.get(sc))
-//
-
-    val sqlContext = SQLContext.getOrCreate(sc)
-    import sqlContext.implicits._
-//    val ds = sqlContext.createDataset( 1 to 10)
-//    ds.collect().foreach(println)
-
-
     val dc = parallelize(1 to 10).map(_.toDouble)
-    val newDs = dc.getDataset(sc)
+    val ds = dc.getDataset(sc)
+    ds.collect().foreach(println)
 
-    newDs.toDF().write.parquet("/tmp/blah")
+  }
 
+
+  test("nested") {
+
+    // TODO: upgrade to spark 2.0 where this works
+
+//
+//    val addresses = Array(Address("abc", 123), Address("def", 456))
+//    val person = Person("bill", addresses)
+//
+//    val sqlContext = SQLContext.getOrCreate(sc)
+//
+//    parallelize(addresses).getDataset(sc).collect().foreach(println)
   }
 
 }

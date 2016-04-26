@@ -5,70 +5,63 @@ import org.apache.spark.rdd.RDD
 
 import scala.reflect.ClassTag
 import scala.language.implicitConversions
-import sparkflow._
 import org.apache.spark.sql.{DataFrame, Dataset, SQLContext, Encoder}
+import sparkflow._
 
 /**
   * DistributedCollection, analogous to RDD
   */
-abstract class DC[T: ClassTag](deps: Seq[Dependency[_]]) extends Dependency[T](deps) {
+abstract class DC[T: ClassTag](deps: Seq[Dependency[_]])(implicit tEncoder: Encoder[T]) extends Dependency[T](deps) {
 
-  private var _rdd: RDD[T] = _
-  private var _dataset: Option[Dataset[T]] = None
+  private var _dataset: Dataset[T] = _
   private var checkpointed = false
 
-  protected def computeRDD(sc: SparkContext): RDD[T]
-  protected def computeDataset(sc: SparkContext): Option[Dataset[T]]
+  protected def computeDataset(sc: SparkContext): Dataset[T]
 
-  def getDataset(sc: SparkContext): Option[Dataset[T]] = {
-    if (_dataset.isEmpty) {
+  def getDataset(sc: SparkContext): Dataset[T] = {
+    if (sparkflow.sQLContext == null){
+      sparkflow.sQLContext = SQLContext.getOrCreate(sc)
+    }
+    if (_dataset == null){
       _dataset = computeDataset(sc)
     }
     _dataset
   }
 
   def getRDD(sc: SparkContext): RDD[T] = {
-    if(_rdd == null){
-      if (checkpointed){
-        loadRDDCheckpoint[T](getHash, sc) match {
-          case Some(existingRdd) => this._rdd = existingRdd
-          case None =>
-            this._rdd = computeRDD(sc)
-            _rdd.cache()
-            saveRDDCheckpoint(getHash, _rdd)
-        }
-      } else {
-        this._rdd = this.computeRDD(sc)
-      }
-    }
-    _rdd
+    getDataset(sc).rdd
   }
 
-  def getDataFrame(sc: SparkContext): Option[DataFrame] = {
-    getDataset(sc).map(_.toDF())
+  def getDataFrame(sc: SparkContext): DataFrame = {
+    getDataset(sc).toDF()
   }
 
-  def map[U: ClassTag](f: T => U): DC[U] = {
-    new RDDTransformDC(this, (rdd: RDD[T]) => rdd.map(f), f)
+  def map[U: ClassTag](f: T => U)(implicit uEncoder: Encoder[U]): DC[U] = {
+    new TransformDC(this, (ds: Dataset[T]) => ds.map(f), f)
   }
 
   def filter(f: T => Boolean): DC[T] = {
-    new RDDTransformDC(this, (rdd: RDD[T]) => rdd.filter(f), f)
+    new TransformDC(this, (ds: Dataset[T]) => ds.filter(f), f)
   }
 
-  def flatMap[U: ClassTag](f: T => TraversableOnce[U]): DC[U] = {
-    new RDDTransformDC(this, (rdd: RDD[T]) => rdd.flatMap(f), f)
+  def flatMap[U: ClassTag](f: T => TraversableOnce[U])(implicit uEncoder: Encoder[U]): DC[U] = {
+    new TransformDC(this, (ds: Dataset[T]) => ds.flatMap(f), f)
   }
 
-  def zipWithUniqueId(): DC[(T, Long)] = {
-    new RDDTransformDC(this, (rdd: RDD[T]) => rdd.zipWithUniqueId, "zipWithUniqueId")
+  def zipWithUniqueId()(implicit tupleEncoder: Encoder[(T, Long)]): DC[(T,Long)] = {
+    val f = (ds: Dataset[T]) => ds.rdd.zipWithUniqueId().toDS()
+    new TransformDC(this, f, "zipWithUniqueId")
   }
 
-  def mapToResult[U:ClassTag](f: RDD[T] => U): DR[U] ={
+  def mapRDDToResult[U:ClassTag](f: RDD[T] => U): DR[U] ={
     new DRImpl[T,U](this, f)
   }
 
-  def mapWith[U:ClassTag, V:ClassTag](dr: DR[U])(f: (T,U) => V) = {
+  def mapDSToResult[U:ClassTag](f: Dataset[T] => U): DR[U] ={
+    new DRImpl[T,U](this, f)
+  }
+
+  def mapWith[U:ClassTag, V:ClassTag](dr: DR[U])(f: (T,U) => V)(implicit vEncoder: Encoder[V]): DC[V] = {
     new ResultDepDC(this, dr, f)
   }
 
@@ -82,7 +75,7 @@ abstract class DC[T: ClassTag](deps: Seq[Dependency[_]]) extends Dependency[T](d
 object DC {
 
   implicit def dcToPairDCFunctions[K, V](dc: DC[(K, V)])
-    (implicit kt: ClassTag[K], vt: ClassTag[V], ord: Ordering[K] = null): PairDCFunctions[K, V] = {
+    (implicit kt: ClassTag[K], vt: ClassTag[V], ord: Ordering[K] = null, tupleEncoder: Encoder[(K,V)]): PairDCFunctions[K, V] = {
     new PairDCFunctions(dc)
   }
 
@@ -90,8 +83,5 @@ object DC {
     new DoubleDCFunctions(dc)
   }
 
-  implicit def dcToDatasetDCFunctions[T](dc: DC[T])(implicit tEncoder: Encoder[T]): DatasetDCFunctions[T] = {
-    new DatasetDCFunctions(dc)
-  }
 
 }

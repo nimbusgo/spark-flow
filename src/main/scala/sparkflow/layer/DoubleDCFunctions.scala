@@ -6,7 +6,7 @@ package sparkflow.layer
 class DoubleDCFunctions(self: DC[Double]) {
 
   def sum(): DR[Double] = {
-    self.mapToResult(_.sum())
+    self.mapRDDToResult(rdd => rdd.sum)
   }
 
 }
